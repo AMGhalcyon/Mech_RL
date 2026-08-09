@@ -103,4 +103,4 @@ without any RL dependency.
    - Mass matrix symmetric positive-definite
    - Energy conservation in frictionless case (within integrator tolerance)
    - NaN/inf detection in integrator
-5. Add `Notes/Day_2.md` and update `CLAUDE.md`.
+5. Add `Notes/Day_2.md` and update `AGENTS.md`.

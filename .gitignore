@@ -48,4 +48,4 @@ multirun/
 # Misc
 *.log
 .env
-CLAUDE.md
+AGENTS.md

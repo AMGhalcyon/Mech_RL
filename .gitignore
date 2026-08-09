@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+*.so
+
+# Virtual environment
+.venv/
+venv/
+
+# Testing / coverage
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Linting
+.ruff_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project artifacts
+experiments/
+models/
+results/
+.mlflow/
+*.pt
+*.pth
+*.onnx
+
+# Hydra
+outputs/
+multirun/
+
+# Misc
+*.log
+.env
+CLAUDE.md

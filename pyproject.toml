@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
-    { name = "TODO: set author name" },
+    { name = "Anish Gangavaram" },
 ]
 keywords = ["reinforcement-learning", "robotics", "control", "energy-aware"]
 classifiers = [
@@ -44,7 +44,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "TODO: set repo URL"
+Homepage = "https://github.com/AMGhalcyon/Mech_RL"
 
 [tool.setuptools.packages.find]
 where = ["src"]

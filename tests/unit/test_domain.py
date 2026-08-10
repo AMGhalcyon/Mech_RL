@@ -61,21 +61,21 @@ class TestRobotParams:
         with pytest.raises(ValidationError):
             RobotParams(
                 l1=-0.1, l2=0.3, m1=1.0, m2=1.0,
-                i1=0.01, i2=0.01, friction=0.05, max_torque=5.0,
+                i1=0.03, i2=0.03, friction=0.05, max_torque=5.0,
             )
 
     def test_zero_mass_rejected(self):
         with pytest.raises(ValidationError):
             RobotParams(
                 l1=0.3, l2=0.3, m1=0.0, m2=1.0,
-                i1=0.01, i2=0.01, friction=0.05, max_torque=5.0,
+                i1=0.03, i2=0.03, friction=0.05, max_torque=5.0,
             )
 
     def test_negative_torque_rejected(self):
         with pytest.raises(ValidationError):
             RobotParams(
                 l1=0.3, l2=0.3, m1=1.0, m2=1.0,
-                i1=0.01, i2=0.01, friction=0.05, max_torque=-1.0,
+                i1=0.03, i2=0.03, friction=0.05, max_torque=-1.0,
             )
 
     def test_frozen(self, default_robot_params):
@@ -86,7 +86,7 @@ class TestRobotParams:
         with pytest.raises(ValidationError):
             RobotParams(
                 l1=0.3, l2=0.3, m1=1.0, m2=1.0,
-                i1=0.01, i2=0.01, friction=0.05, max_torque=5.0,
+                i1=0.03, i2=0.03, friction=0.05, max_torque=5.0,
                 unknown_field=42,
             )
 

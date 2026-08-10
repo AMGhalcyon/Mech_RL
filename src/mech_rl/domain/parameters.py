@@ -30,8 +30,11 @@ class RobotParams(BaseConfig):
     m1: float = Field(gt=0.0, description="Upper-arm mass (kg)")
     m2: float = Field(gt=0.0, description="Forearm mass (kg)")
 
-    # Inertia about joint (point-mass approximation is sufficient for
-    # the 2-DOF case but we expose the parameter for completeness).
+    # Moment of inertia about the joint, parallel-axis included. For a
+    # uniform rod of mass m and length l this is m*l^2 / 3; values smaller
+    # than that are physically inadmissible but the physics layer does not
+    # enforce the bound — it's the config author's responsibility to pick
+    # parameters that match the rigid-rod model.
     i1: float = Field(gt=0.0, description="Upper-arm rotational inertia (kg*m^2)")
     i2: float = Field(gt=0.0, description="Forearm rotational inertia (kg*m^2)")
 

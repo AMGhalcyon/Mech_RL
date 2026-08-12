@@ -1,11 +1,4 @@
-"""Gymnasium environment for the 2-DOF planar arm.
-
-Wraps the framework-independent physics layer in the standard
-``gym.Env`` interface so the arm can be trained with Stable-Baselines3.
-
-Action space: continuous joint torques, one per joint.
-Observation space: Dict with ``q``, ``qdot``, ``target`` arrays.
-"""
+"""Gymnasium env for the 2-DOF arm. Torque control, Dict obs (q, qdot, target)."""
 
 from __future__ import annotations
 
@@ -19,37 +12,26 @@ from mech_rl.domain.state import RobotState
 from mech_rl.domain.types import as_array
 from mech_rl.physics import forward_kinematics, rk4, semi_implicit_euler
 
-# Dispatch table: sim_params.integrator string → integration function.
+# Integrator dispatch — resolved once at init, no if/else in hot step().
 _INTEGRATORS = {
     "semi_implicit_euler": semi_implicit_euler,
     "rk4": rk4,
 }
 
-# Observation keys.
+# Observation dict keys.
 _Q_KEY = "q"
 _QDOT_KEY = "qdot"
 _TARGET_KEY = "target"
 
 
 class RobotEnv(gym.Env):
-    """Gymnasium environment for torque-controlled 2-DOF arm.
+    """Torque-controlled 2-DOF arm env. Dict obs (q, qdot, target). Use FlattenObservation for SB3.
 
-    The environment wraps the physics layer and exposes a standard
-    ``reset`` / ``step`` interface.  Observations are delivered as a
-    ``Dict`` (``q``, ``qdot``, ``target``) — use
-    ``gymnasium.wrappers.FlattenObservation`` to flatten for SB3.
-
-    Parameters
-    ----------
-    robot_params:
-        Physical parameters of the arm.
-    sim_params:
-        Timestep, episode length, integrator choice.
-    reward_params:
-        Coefficients for the reward function.
-    target:
-        Fixed end-effector target ``(x, y)``.  If ``None`` a random
-        target is sampled inside the reachable workspace on each reset.
+    Args:
+        robot_params: Arm physical params (lengths, masses, inertias, friction, max_torque).
+        sim_params: dt, max_episode_steps, integrator name.
+        reward_params: Coefficients for reward terms.
+        target: Fixed (x,y) target. None = random target each reset.
     """
 
     metadata: dict[str, Any] = {"render_modes": []}
@@ -191,27 +173,26 @@ class RobotEnv(gym.Env):
     ) -> float:
         rp = self.reward_params
 
-        # End-effector position.
         ee = forward_kinematics(new_state.q, self.robot_params)
         ee_xy = np.array([ee.x, ee.y])
         distance = float(np.linalg.norm(ee_xy - self._target))
 
-        # Distance penalty.
+        # Distance penalty
         reward = -rp.distance_coef * distance
 
-        # Effort penalty: ||tau||^2.
+        # Effort: ||tau||^2
         reward -= rp.effort_coef * float(np.dot(action, action))
 
-        # Smoothness penalty: ||tau_t - tau_{t-1}||^2.
+        # Smoothness: ||tau_t - tau_{t-1}||^2 (skipped on first step)
         if self._prev_action is not None and rp.smoothness_coef > 0.0:
             tau_diff = action - self._prev_action
             reward -= rp.smoothness_coef * float(np.dot(tau_diff, tau_diff))
 
-        # Sparse success bonus.
+        # Success bonus
         if distance < rp.success_radius:
             reward += rp.success_bonus
 
-        # Time penalty.
+        # Time penalty per step
         reward -= rp.time_penalty
 
         return float(reward)

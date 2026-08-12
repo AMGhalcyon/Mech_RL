@@ -1,4 +1,4 @@
-"""Tests for the dynamics layer."""
+"""Tests for dynamics — M, C, G, F, PE, EOM assembly."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from mech_rl.physics.dynamics import (
 )
 
 
-class TestMassMatrix:
+class MassMatrixTests:
     def test_shape(self, default_robot_params):
         m = mass_matrix(np.zeros(2), default_robot_params)
         assert m.shape == (2, 2)
@@ -26,51 +26,44 @@ class TestMassMatrix:
         np.testing.assert_allclose(m, m.T)
 
     def test_positive_definite(self, default_robot_params):
-        # Eigenvalues of a symmetric PD matrix are strictly positive.
         m = mass_matrix(np.array([0.4, -0.3]), default_robot_params)
         eigvals = np.linalg.eigvalsh(m)
         assert np.all(eigvals > 0.0)
 
-    def test_m11_independent_of_q(self, default_robot_params):
-        # M[1, 1] depends only on link-2 inertia and geometry, not on q.
+    def test_m11_constant(self, default_robot_params):
         m_a = mass_matrix(np.zeros(2), default_robot_params)
         m_b = mass_matrix(np.array([0.5, 1.2]), default_robot_params)
         np.testing.assert_allclose(m_a[1, 1], m_b[1, 1])
 
     def test_m00_varies_with_cos_q1(self, default_robot_params):
-        # Only M[0, 0] depends on q (through cos(q1)).
         m_straight = mass_matrix(np.array([0.0, 0.0]), default_robot_params)
         m_bent = mass_matrix(np.array([0.0, np.pi]), default_robot_params)
         assert m_straight[0, 0] > m_bent[0, 0]
 
 
-class TestCoriolis:
-    def test_zero_at_zero_velocity(self, default_robot_params):
+class CoriolisTests:
+    def test_zero_at_rest(self, default_robot_params):
         c = coriolis(np.array([0.4, 0.7]), np.zeros(2), default_robot_params)
         np.testing.assert_allclose(c, np.zeros(2), atol=1e-12)
 
-    def test_zero_when_q1_is_zero_or_pi(self, default_robot_params):
-        # sin(q1) = 0 at q1=0 or q1=pi -> C(q,qdot) qdot = 0.
+    def test_zero_at_singularity(self, default_robot_params):
         qdot = np.array([1.0, 0.5])
         for q1 in (0.0, np.pi):
             c = coriolis(np.array([0.4, q1]), qdot, default_robot_params)
             np.testing.assert_allclose(c, np.zeros(2), atol=1e-12)
 
 
-class TestGravity:
-    def test_positive_shoulder_torque_at_zero(self, default_robot_params):
-        # Arm along +x at q=0: gravity pulls -y, so a positive (CCW)
-        # shoulder torque is needed to hold the arm up.
+class GravityTests:
+    def test_shoulder_torque_positive_at_zero(self, default_robot_params):
         g = gravity(np.zeros(2), default_robot_params)
         assert g[0] > 0.0
 
-    def test_zero_when_arm_vertical(self, default_robot_params):
-        # q = [pi/2, 0] -> arm straight up; gravity aligned with arm, no torque.
+    def test_zero_when_vertical(self, default_robot_params):
         g = gravity(np.array([np.pi / 2.0, 0.0]), default_robot_params)
         np.testing.assert_allclose(g, np.zeros(2), atol=1e-9)
 
 
-class TestFriction:
+class FrictionTests:
     def test_proportional_to_velocity(self, default_robot_params):
         qdot = np.array([2.0, -3.0])
         f = friction(qdot, default_robot_params)
@@ -86,20 +79,17 @@ class TestFriction:
         )
 
 
-class TestPotentialEnergy:
-    def test_zero_when_arm_hangs_down(self, default_robot_params):
-        # q = [-pi/2, 0] -> arm straight down; reference configuration.
+class PotentialEnergyTests:
+    def test_zero_at_reference_config(self, default_robot_params):
         u = potential_energy(np.array([-np.pi / 2.0, 0.0]), default_robot_params)
         np.testing.assert_allclose(u, 0.0, atol=1e-9)
 
-    def test_maximum_when_arm_straight_up(self, default_robot_params):
-        # q = [pi/2, 0] -> arm straight up; highest gravitational PE.
+    def test_max_at_straight_up(self, default_robot_params):
         u_up = potential_energy(np.array([np.pi / 2.0, 0.0]), default_robot_params)
         u_down = potential_energy(np.array([-np.pi / 2.0, 0.0]), default_robot_params)
         assert u_up > u_down
 
     def test_gradient_matches_gravity(self, default_robot_params):
-        # dU/dq should equal G(q) by construction.
         q = np.array([0.3, -0.4])
         eps = 1e-6
         u0 = potential_energy(q, default_robot_params)
@@ -113,10 +103,8 @@ class TestPotentialEnergy:
         np.testing.assert_allclose(g_num, g_analytic, atol=1e-4)
 
 
-class TestEquationOfMotion:
+class EquationOfMotionTests:
     def test_zero_torque_zero_state_stays_zero(self, frictionless_robot_params):
-        # With friction=0, no torque, and the arm aligned with gravity
-        # (q=[pi/2, 0]), there is no generalised force at all -> qddot = 0.
         qddot = equation_of_motion(
             np.array([np.pi / 2.0, 0.0]),
             np.zeros(2),
@@ -126,7 +114,6 @@ class TestEquationOfMotion:
         np.testing.assert_allclose(qddot, np.zeros(2), atol=1e-9)
 
     def test_inverse_consistency(self, default_robot_params):
-        # tau = M @ qddot + C @ qdot + G + F should hold by construction.
         q = np.array([0.3, -0.4])
         qdot = np.array([0.5, -0.2])
         qddot = np.array([1.0, 2.0])

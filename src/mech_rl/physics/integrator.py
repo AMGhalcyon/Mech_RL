@@ -1,15 +1,9 @@
-"""Time integrators for the 2-DOF arm dynamics.
+"""Time integrators for the 2-DOF arm. Two schemes, same signature for env dispatch.
 
-Two steppers are provided, both behind the same signature so the env
-layer can dispatch by name (see ``SimParams.integrator``):
+- semi_implicit_euler: symplectic, first-order, cheap. Velocity first, then position with new velocity.
+- rk4: classical RK4, 4 acceleration evals/step. Lower energy drift.
 
-- :func:`semi_implicit_euler` — symplectic, first order, very cheap. The
-  default. Updates velocity first, then position with the *new* velocity.
-- :func:`rk4` — classical 4th-order Runge-Kutta. Four acceleration
-  evaluations per step but much lower energy drift over long horizons.
-
-Adaptive step-size integrators are out of scope for Day2 — the env layer
-(Day3) drives integration at a fixed ``dt`` from ``SimParams``.
+Adaptive step-size is out of scope — env drives fixed dt from SimParams.
 """
 
 from __future__ import annotations
@@ -48,17 +42,8 @@ def semi_implicit_euler(
     params: RobotParams,
     dt: float,
 ) -> RobotState:
-    """Advance ``state`` by one step of size ``dt`` using semi-implicit Euler.
-
-    Steps:
-        qddot = equation_of_motion(q, qdot, tau, params)
-        qdot_new = qdot + dt * qddot
-        q_new    = q    + dt * qdot_new
-
-    The order matters: updating velocity before position is what makes
-    this scheme symplectic (and why it conserves energy far better than
-    explicit Euler on a second-order system).
-    """
+    """Semi-implicit (symplectic) Euler step. Velocity update first, then position with new velocity.
+    Order matters — that's what makes it symplectic and energy-stable."""
     if dt <= 0.0:
         raise ValueError(f"dt must be positive, got {dt}")
 
@@ -79,15 +64,8 @@ def rk4(
     params: RobotParams,
     dt: float,
 ) -> RobotState:
-    """Advance ``state`` by one step of size ``dt`` using classical RK4.
-
-    Standard weights: ``y_{n+1} = y_n + (dt/6) * (k1 + 2 k2 + 2 k3 + k4)``
-    with stages
-        k1 = f(y_n)
-        k2 = f(y_n + dt/2 * k1)
-        k3 = f(y_n + dt/2 * k2)
-        k4 = f(y_n + dt   * k3)
-    """
+    """Classical RK4 step. y' = [qdot; qddot]. 4 stages, standard weights.
+    Much lower energy drift than SI-Euler over long horizons."""
     if dt <= 0.0:
         raise ValueError(f"dt must be positive, got {dt}")
 

@@ -1,26 +1,7 @@
-"""Equation of motion for the 2-DOF planar arm.
+"""2-DOF arm dynamics — M(q) qddot + C(q,qdot)qdot + G(q) + F(qdot) = tau.
 
-The dynamics are written in the manipulator form
-
-    M(q) qddot + C(q, qdot) qdot + G(q) + F(qdot) = tau
-
-where:
-- ``M(q)``   is the (2, 2) symmetric positive-definite inertia matrix
-- ``C(q, qdot) qdot`` is the Coriolis / centripetal vector (we expose the
-  velocity-product form, not the matrix ``C`` itself)
-- ``G(q)``   is the gravitational torque
-- ``F(qdot)``is the viscous friction torque (``friction * qdot``)
-- ``tau``    is the applied joint torque
-
-Gravity is taken along ``-y`` of the base frame. The module-level constant
-``G_ACCEL`` defaults to 9.81 m/s^2; we do not thread it through
-``RobotParams`` yet to keep Day2's surface area small.
-
-Both links are modelled as uniform rods with the centre of mass at the
-midpoint; rotational inertia about the joint is taken from the supplied
-``i1`` and ``i2``. If a future variant needs non-uniform mass distributions,
-swap the closed-form expressions for symbolic ones — the public API does
-not change.
+Gravity acts along -y. G_ACCEL = 9.81 hardcoded for now (TODO: promote to RobotParams).
+Links are uniform rods, CoM at midpoint. i1/i2 are joint inertias (parallel-axis included).
 """
 
 from __future__ import annotations
@@ -30,20 +11,12 @@ import numpy as np
 from mech_rl.domain.parameters import RobotParams
 from mech_rl.domain.types import as_array
 
-G_ACCEL: float = 9.81
-"""Gravitational acceleration magnitude (m/s^2). Direction is ``-y``."""
+G_ACCEL = 9.81  # m/s^2, direction -y
 
 
 def mass_matrix(q: np.ndarray, params: RobotParams) -> np.ndarray:
-    """Return the (2, 2) symmetric positive-definite inertia matrix ``M(q)``.
-
-    Both ``M[0, 0]`` and ``M[0, 1]`` carry the same ``cos(q1)`` dependence
-    (only the magnitude differs). ``M[1, 1]`` is constant.
-
-    The rotational inertias ``i1`` and ``i2`` are interpreted as the link's
-    moment of inertia *about its own joint*, parallel-axis included — so the
-    translational CoM contributions are already folded in.
-    """
+    """Inertia matrix M(q). Symmetric, PD. Only M[0,0] and M[0,1] vary with q1 (cos(q1)).
+    M[1,1] = i2 is constant. i1/i2 are joint inertias (parallel-axis already folded in)."""
     q = as_array(q)
     if q.shape != (2,):
         raise ValueError(f"q must have shape (2,), got {q.shape}")
@@ -69,17 +42,8 @@ def mass_matrix(q: np.ndarray, params: RobotParams) -> np.ndarray:
 
 
 def coriolis(q: np.ndarray, qdot: np.ndarray, params: RobotParams) -> np.ndarray:
-    """Return ``C(q, qdot) qdot`` as a 2-vector.
-
-    Computed from the energy-conserving Lagrangian form
-    ``C qdot = M_dot qdot - 0.5 grad_q(qdot^T M qdot)``. For this planar
-    arm only the ``q1``-dependence of ``M`` contributes; the result scales
-    with ``sin(q1)``.
-
-    The returned vector is the unique quadratic-in-``qdot`` Coriolis term
-    that, when plugged into ``M qddot + C qdot + G = tau``, yields a
-    conservative mechanical system.
-    """
+    """C(q, qdot) qdot as 2-vector. Energy-conserving Lagrangian form.
+    Only q1-dependence of M contributes — scales with sin(q1). Zero at q1=0 or pi (singularity)."""
     q = as_array(q)
     qdot = as_array(qdot)
     if q.shape != (2,):
@@ -96,12 +60,11 @@ def coriolis(q: np.ndarray, qdot: np.ndarray, params: RobotParams) -> np.ndarray
     qd0 = qdot[0]
     qd1 = qdot[1]
 
-    # From the Lagrangian form:
-    #   C qdot = M_dot qdot - 0.5 grad_q(qdot^T M qdot)
-    # M only depends on q1, so the gradient lives entirely in q1.
+    # Lagrangian form: C qdot = M_dot qdot - 0.5 grad_q(qdot^T M qdot)
+    # M only depends on q1 -> gradient lives entirely in q1
     grad_qdotT_M_qdot_q1 = -h * (qd0 * qd0 + qd0 * qd1)
     m_dot_qdot_0 = -h * qd0 * qd1 - 0.5 * h * qd1 * qd1
-    m_dot_qdot_1 = -0.5 * h * qd0 * qd1  # M[1, 0] = M[0, 1] contributes too
+    m_dot_qdot_1 = -0.5 * h * qd0 * qd1  # M[1,0] = M[0,1] contributes too
 
     return np.array(
         [
@@ -113,12 +76,7 @@ def coriolis(q: np.ndarray, qdot: np.ndarray, params: RobotParams) -> np.ndarray
 
 
 def gravity(q: np.ndarray, params: RobotParams) -> np.ndarray:
-    """Return gravitational torque ``G(q)`` as a 2-vector.
-
-    With both joints at zero, the arm points along +x and gravity (in -y)
-    pulls it down, so ``G[0] > 0`` (counter-clockwise shoulder torque to
-    hold the arm up).
-    """
+    """Gravitational torque G(q). At q=0 arm points +x, gravity -y -> G[0] > 0 (CCW shoulder)."""
     q = as_array(q)
     if q.shape != (2,):
         raise ValueError(f"q must have shape (2,), got {q.shape}")
@@ -137,7 +95,7 @@ def gravity(q: np.ndarray, params: RobotParams) -> np.ndarray:
 
 
 def friction(qdot: np.ndarray, params: RobotParams) -> np.ndarray:
-    """Return viscous friction torque ``friction * qdot`` as a 2-vector."""
+    """Viscous friction = friction * qdot. Simple, linear."""
     qdot = as_array(qdot)
     if qdot.shape != (2,):
         raise ValueError(f"qdot must have shape (2,), got {qdot.shape}")
@@ -145,13 +103,8 @@ def friction(qdot: np.ndarray, params: RobotParams) -> np.ndarray:
 
 
 def potential_energy(q: np.ndarray, params: RobotParams) -> float:
-    """Return gravitational potential energy ``U(q)`` in joules.
-
-    Reference: ``U = 0`` when the arm hangs straight down at
-    ``q = [-pi/2, 0]``. An additive constant is subtracted so that the
-    gravitational torque ``G = dU/dq`` is unchanged — energy-conservation
-    tests only need ``dU`` to be invariant under the shift.
-    """
+    """Gravitational PE in joules. U=0 at reference config (arm straight down, q=[-pi/2, 0]).
+    Shift is arbitrary — only dU matters for energy-conservation tests."""
     q = as_array(q)
     if q.shape != (2,):
         raise ValueError(f"q must have shape (2,), got {q.shape}")
@@ -160,8 +113,7 @@ def potential_energy(q: np.ndarray, params: RobotParams) -> float:
     m1, m2 = params.m1, params.m2
     g = G_ACCEL
 
-    # y-CoM of each link in the base frame, and the same when the arm hangs
-    # straight down (q = [-pi/2, 0]).
+    # y-CoM of each link, minus the reference config (arm straight down)
     y_c1 = (l1 / 2.0) * np.sin(q[0])
     y_c2 = l1 * np.sin(q[0]) + (l2 / 2.0) * np.sin(q[0] + q[1])
     y_c1_ref = -(l1 / 2.0)
@@ -177,11 +129,8 @@ def equation_of_motion(
     tau: np.ndarray,
     params: RobotParams,
 ) -> np.ndarray:
-    """Solve ``M(q) qddot = tau - C - G - F`` for ``qddot``.
-
-    ``np.linalg.solve`` on a (2, 2) dense system is faster than forming an
-    inverse, and we already know ``M`` is non-singular by construction.
-    """
+    """Solve M(q) qddot = tau - C - G - F for qddot.
+    np.linalg.solve on 2x2 is faster than inv, and M is non-singular by construction."""
     q = as_array(q)
     qdot = as_array(qdot)
     tau = as_array(tau)

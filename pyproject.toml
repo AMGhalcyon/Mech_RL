@@ -72,7 +72,7 @@ known-first-party = ["mech_rl"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-python_classes = ["Test*"]
+python_classes = ["Test*", "*Tests"]
 python_functions = ["test_*"]
 addopts = "-v --strict-markers"
 markers = [

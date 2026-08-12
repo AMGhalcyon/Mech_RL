@@ -1,0 +1,244 @@
+"""Gymnasium environment for the 2-DOF planar arm.
+
+Wraps the framework-independent physics layer in the standard
+``gym.Env`` interface so the arm can be trained with Stable-Baselines3.
+
+Action space: continuous joint torques, one per joint.
+Observation space: Dict with ``q``, ``qdot``, ``target`` arrays.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import gymnasium as gym
+import numpy as np
+
+from mech_rl.domain.parameters import RewardParams, RobotParams, SimParams
+from mech_rl.domain.state import RobotState
+from mech_rl.domain.types import as_array
+from mech_rl.physics import forward_kinematics, rk4, semi_implicit_euler
+
+# Dispatch table: sim_params.integrator string → integration function.
+_INTEGRATORS = {
+    "semi_implicit_euler": semi_implicit_euler,
+    "rk4": rk4,
+}
+
+# Observation keys.
+_Q_KEY = "q"
+_QDOT_KEY = "qdot"
+_TARGET_KEY = "target"
+
+
+class RobotEnv(gym.Env):
+    """Gymnasium environment for torque-controlled 2-DOF arm.
+
+    The environment wraps the physics layer and exposes a standard
+    ``reset`` / ``step`` interface.  Observations are delivered as a
+    ``Dict`` (``q``, ``qdot``, ``target``) — use
+    ``gymnasium.wrappers.FlattenObservation`` to flatten for SB3.
+
+    Parameters
+    ----------
+    robot_params:
+        Physical parameters of the arm.
+    sim_params:
+        Timestep, episode length, integrator choice.
+    reward_params:
+        Coefficients for the reward function.
+    target:
+        Fixed end-effector target ``(x, y)``.  If ``None`` a random
+        target is sampled inside the reachable workspace on each reset.
+    """
+
+    metadata: dict[str, Any] = {"render_modes": []}
+
+    def __init__(
+        self,
+        robot_params: RobotParams,
+        sim_params: SimParams,
+        reward_params: RewardParams,
+        *,
+        target: np.ndarray | None = None,
+    ) -> None:
+        super().__init__()
+
+        self.robot_params = robot_params
+        self.sim_params = sim_params
+        self.reward_params = reward_params
+
+        # Integrator function for the hot path.
+        self._integrator = _INTEGRATORS[sim_params.integrator]
+
+        # Observation space: Dict with explicit keys.
+        max_reach = robot_params.l1 + robot_params.l2
+        self.observation_space = gym.spaces.Dict(
+            {
+                _Q_KEY: gym.spaces.Box(
+                    low=-np.pi, high=np.pi, shape=(2,), dtype=np.float64
+                ),
+                _QDOT_KEY: gym.spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(2,), dtype=np.float64
+                ),
+                _TARGET_KEY: gym.spaces.Box(
+                    low=-max_reach, high=max_reach, shape=(2,), dtype=np.float64
+                ),
+            }
+        )
+
+        # Action space: joint torques bounded by max_torque.
+        self.action_space = gym.spaces.Box(
+            low=-robot_params.max_torque,
+            high=robot_params.max_torque,
+            shape=(2,),
+            dtype=np.float64,
+        )
+
+        # Internal state (set properly on reset).
+        self._state = RobotState(q=np.zeros(2), qdot=np.zeros(2))
+        self._target: np.ndarray = np.zeros(2)
+        self._step_count: int = 0
+        self._prev_action: np.ndarray | None = None
+
+        # Fixed target for reproducible testing / eval.
+        self._fixed_target: np.ndarray | None = (
+            as_array(target) if target is not None else None
+        )
+
+        # Random number generator (gymnasium-managed via seed()).
+        self._rng = np.random.default_rng()
+
+    # ------------------------------------------------------------------
+    # gymnasium API
+    # ------------------------------------------------------------------
+
+    def reset(
+        self,
+        *,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        super().reset(seed=seed, options=options or {})
+        if seed is not None:
+            self._rng = np.random.default_rng(seed)
+
+        options = options or {}
+
+        # Joint positions: custom or random.
+        if "reset_position" in options:
+            q = as_array(options["reset_position"])
+        else:
+            q = self._rng.uniform(-np.pi, np.pi, size=2)
+
+        self._state = RobotState(q=q, qdot=np.zeros(2))
+        self._step_count = 0
+        self._prev_action = None
+
+        # Target: options override fixed target; if neither is set, resample.
+        if "target" in options:
+            self._target = as_array(options["target"])
+        elif self._fixed_target is not None:
+            self._target = self._fixed_target.copy()
+        else:
+            self._target = self._sample_target()
+
+        return self._obs_dict(), {}
+
+    def step(
+        self, action: np.ndarray
+    ) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
+        action = as_array(action)
+        action = np.clip(action, -self.robot_params.max_torque, self.robot_params.max_torque)
+
+        # Advance physics.
+        new_state = self._integrator(self._state, action, self.robot_params, self.sim_params.dt)
+
+        # Count this transition before termination checks so that
+        # the Nth step is truncated when max_episode_steps == N.
+        self._step_count += 1
+
+        # Reward.
+        reward = self._compute_reward(self._state, action, new_state)
+
+        # Termination checks.
+        terminated, truncated = self._check_done(new_state)
+
+        # Bookkeeping.
+        self._prev_action = action.copy()
+        self._state = new_state
+
+        info: dict[str, Any] = {}
+        ee = forward_kinematics(new_state.q, self.robot_params)
+        info["ee_pose"] = (ee.x, ee.y, ee.theta)
+        info["distance"] = float(np.linalg.norm(np.array([ee.x, ee.y]) - self._target))
+
+        return self._obs_dict(), reward, terminated, truncated, info
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _obs_dict(self) -> dict[str, Any]:
+        return {
+            _Q_KEY: self._state.q.copy(),
+            _QDOT_KEY: self._state.qdot.copy(),
+            _TARGET_KEY: self._target.copy(),
+        }
+
+    def _compute_reward(
+        self, state: RobotState, action: np.ndarray, new_state: RobotState
+    ) -> float:
+        rp = self.reward_params
+
+        # End-effector position.
+        ee = forward_kinematics(new_state.q, self.robot_params)
+        ee_xy = np.array([ee.x, ee.y])
+        distance = float(np.linalg.norm(ee_xy - self._target))
+
+        # Distance penalty.
+        reward = -rp.distance_coef * distance
+
+        # Effort penalty: ||tau||^2.
+        reward -= rp.effort_coef * float(np.dot(action, action))
+
+        # Smoothness penalty: ||tau_t - tau_{t-1}||^2.
+        if self._prev_action is not None and rp.smoothness_coef > 0.0:
+            tau_diff = action - self._prev_action
+            reward -= rp.smoothness_coef * float(np.dot(tau_diff, tau_diff))
+
+        # Sparse success bonus.
+        if distance < rp.success_radius:
+            reward += rp.success_bonus
+
+        # Time penalty.
+        reward -= rp.time_penalty
+
+        return float(reward)
+
+    def _check_done(self, state: RobotState) -> tuple[bool, bool]:
+        terminated = False
+        truncated = False
+
+        # Success: end-effector within success_radius of target.
+        ee = forward_kinematics(state.q, self.robot_params)
+        ee_xy = np.array([ee.x, ee.y])
+        if np.linalg.norm(ee_xy - self._target) < self.reward_params.success_radius:
+            terminated = True
+
+        # Time limit.
+        if self._step_count >= self.sim_params.max_episode_steps:
+            truncated = True
+
+        return terminated, truncated
+
+    def _sample_target(self) -> np.ndarray:
+        """Sample a random target inside the reachable workspace."""
+        max_reach = self.robot_params.l1 + self.robot_params.l2
+        while True:
+            xy = self._rng.uniform(-max_reach, max_reach, size=2)
+            if np.linalg.norm(xy) <= max_reach:
+                return xy
+
+
+__all__ = ["RobotEnv"]

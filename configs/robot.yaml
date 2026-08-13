@@ -1,0 +1,21 @@
+# Default robot physical parameters.
+# Matches RobotParams in src/mech_rl/domain/parameters.py
+
+# Link lengths (m)
+l1: 0.3
+l2: 0.3
+
+# Link masses (kg)
+m1: 1.0
+m2: 1.0
+
+# Moment of inertia about the joint, parallel-axis included (kg*m^2).
+# For a uniform rod about its end: m*l^2 / 3 = 1.0 * 0.3^2 / 3 = 0.03
+i1: 0.03
+i2: 0.03
+
+# Viscous friction coefficient (N*m*s/rad)
+friction: 0.05
+
+# Per-joint torque limit magnitude (N*m)
+max_torque: 5.0

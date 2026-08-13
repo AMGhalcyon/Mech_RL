@@ -1,0 +1,11 @@
+# Simulator parameters.
+# Matches SimParams in src/mech_rl/domain/parameters.py
+
+# Integration timestep (s)
+dt: 0.01
+
+# Episode length cap
+max_episode_steps: 1000
+
+# Integrator name: "semi_implicit_euler" or "rk4"
+integrator: semi_implicit_euler

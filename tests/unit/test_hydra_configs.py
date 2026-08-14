@@ -7,6 +7,7 @@ via the Hydra structured config system.
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from mech_rl.configs.reward import RewardConfig
 from mech_rl.configs.robot import RobotConfig

@@ -1,0 +1,10 @@
+# Evaluation configuration for Mech_RL
+
+eval_episodes: 10
+# Number of evaluation episodes to run after training
+
+eval_interval: 1000
+# Evaluate every N training steps (optional future feature)
+
+# Environment seed base for reproducible evaluation
+seed_base: 42

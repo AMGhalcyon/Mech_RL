@@ -31,6 +31,13 @@ from mech_rl.configs.sim import SimConfig
 from mech_rl.configs.train import TrainConfig
 from mech_rl.domain.parameters import RewardParams, RobotParams, SimParams
 from mech_rl.environment import RobotEnv
+from mech_rl.tracking.mlflow_tracker import (
+    finish_run,
+    log_metrics,
+    log_model,
+    log_params,
+    start_run,
+)
 from mech_rl.utils.reproducibility import set_seed
 
 if TYPE_CHECKING:
@@ -140,8 +147,19 @@ def train(cfg: DictConfig) -> PPO:
         device=cfg.train.device,
     )
 
-    # Train
-    model.learn(total_timesteps=cfg.train.total_timesteps)
+    # Train with checkpoint callback
+    from stable_baselines3.common.callbacks import CheckpointCallback
+    output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
+    checkpoint_cb = CheckpointCallback(
+        save_freq=max(1000, cfg.train.total_timesteps // 10),
+        save_path=str(output_dir / "checkpoints"),
+        name_prefix="rl_model",
+        verbose=1,
+    )
+    model.learn(
+        total_timesteps=cfg.train.total_timesteps,
+        callback=checkpoint_cb,
+    )
 
     return model
 
@@ -163,16 +181,40 @@ def main(cfg: DictConfig) -> None:
     obs, _ = env.reset(seed=cfg.train.seed)
     print(f"Initial observation keys: {list(obs.keys())}")
 
-    # Train
-    print("\nStarting training...")
-    model = train(cfg)
-    print("Training complete!")
+    # Start MLflow run
+    start_run(experiment_name="mech_rl")
+    try:
+        # Log hyperparameters
+        log_params({
+            **cfg.train,
+            "robot/l1": cfg.robot.l1,
+            "robot/l2": cfg.robot.l2,
+            "sim/dt": cfg.sim.dt,
+            "reward/distance_coef": cfg.reward.distance_coef,
+        })
 
-    # Save model
-    output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
-    model_path = output_dir / "model.zip"
-    model.save(str(model_path))
-    print(f"Model saved to: {model_path}")
+        # Train
+        print("\nStarting training...")
+        model = train(cfg)
+        print("Training complete!")
+
+        # Evaluate on a few episodes (optional)
+        from mech_rl.evaluation.eval_loop import evaluate
+        eval_env = instantiate_env(cfg)
+        mean_reward = evaluate(model, eval_env, num_episodes=5)
+        print(f"Mean evaluation reward: {mean_reward:.2f}")
+        log_metrics({"eval_mean_reward": mean_reward})
+
+        # Save model
+        output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
+        model_path = output_dir / "model.zip"
+        model.save(str(model_path))
+        print(f"Model saved to: {model_path}")
+        log_model(model_path, artifact_path="model")
+
+    finally:
+        # End MLflow run
+        finish_run()
 
 
 # Make this module callable as a module: `python -m mech_rl.training.train`

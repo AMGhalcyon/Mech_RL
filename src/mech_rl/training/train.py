@@ -129,9 +129,13 @@ def train(cfg: DictConfig) -> PPO:
     # Get policy kwargs
     policy_kwargs = cfg.train.policy_kwargs or dict(net_arch=[64, 64])
 
-    # Instantiate PPO
+    # Setup TensorBoard logging
+    output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
+    tensorboard_log = str(output_dir / "tensorboard")
+
+    # Instantiate PPO with TensorBoard logging
     model = PPO(
-        policy="MlpPolicy",
+        policy="MultiInputPolicy",
         env=env,
         learning_rate=cfg.train.learning_rate,
         n_steps=cfg.train.n_steps,
@@ -145,11 +149,11 @@ def train(cfg: DictConfig) -> PPO:
         policy_kwargs=policy_kwargs,
         verbose=1,
         device=cfg.train.device,
+        tensorboard_log=tensorboard_log,
     )
 
     # Train with checkpoint callback
     from stable_baselines3.common.callbacks import CheckpointCallback
-    output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     checkpoint_cb = CheckpointCallback(
         save_freq=max(1000, cfg.train.total_timesteps // 10),
         save_path=str(output_dir / "checkpoints"),

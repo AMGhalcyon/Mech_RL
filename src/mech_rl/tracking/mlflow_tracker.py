@@ -5,11 +5,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    import mlflow
+    pass
 
 
 def start_run(experiment_name: str = "mech_rl") -> None:
     """Start or set an MLflow tracking run."""
+    import mlflow
     mlflow.set_experiment(experiment_name)
     mlflow.start_run()
 

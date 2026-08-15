@@ -58,3 +58,4 @@ graphify-out/
 
 # Graphify merge-driver registration (project-private; the .git/hooks scripts are per-clone and not committed anyway)
 .gitattributes
+mlruns/

@@ -42,6 +42,9 @@ dev = [
     "pytest-cov>=4.1,<6.0",
     "ruff>=0.4,<1.0",
 ]
+video = [
+    "imageio>=2.34,<3.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/AMGhalcyon/Mech_RL"

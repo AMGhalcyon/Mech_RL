@@ -1,0 +1,51 @@
+# Main configuration file that composes all subconfigs
+defaults:
+  - robot
+  - sim
+  - reward
+  - train
+  - evaluation
+
+# Experiment name (used for MLflow)
+experiment_name: mech_rl
+
+# Override any values here if needed
+robot:
+  l1: 0.3
+  l2: 0.3
+  m1: 1.0
+  m2: 1.0
+  i1: 0.03
+  i2: 0.03
+  friction: 0.05
+  max_torque: 5.0
+
+sim:
+  dt: 0.05
+  integrator: euler
+
+reward:
+  distance_coef: 1.0
+  action_coef: 0.01
+  alive_bonus: 0.1
+
+train:
+  device: auto  # Will use cuda if available, otherwise cpu
+  total_timesteps: 1000
+  learning_rate: 0.0003
+  buffer_size: 50000
+  learning_starts: 100
+  batch_size: 64
+  tau: 0.005
+  gamma: 0.99
+  train_freq: 1
+  gradient_steps: 1
+  target_update_interval: 1
+  exploration_fraction: 0.1
+  exploration_initial_eps: 1.0
+  exploration_final_eps: 0.05
+  seed: 42
+
+evaluation:
+  eval_freq: 5000
+  eval_episodes: 5

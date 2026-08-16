@@ -197,6 +197,25 @@ def main(cfg: DictConfig) -> None:
             "reward/distance_coef": cfg.reward.distance_coef,
         })
 
+        # Log sweep information if running under Hydra multirun
+        try:
+            from hydra.core.hydra_config import HydraConfig
+            hydra_cfg = HydraConfig.get()
+            # Job number/index within the sweep
+            if hydra_cfg.job.num is not None:
+                log_params({"sweep/job_num": hydra_cfg.job.num})
+            # Hydra stores the sweep config under cfg.hydra. Sweep params appear as
+            # cfg.hydra.runtime.choices or can be inferred from the overrides.
+            # Simpler approach: log any config key that differs from the defaults
+            # as a swept parameter (requires default config accessible).
+            # For now, log the explicit overrides passed via command line.
+            if hydra_cfg.overrides.task:
+                # Store the raw overrides as a param for reproducibility
+                log_params({"sweep/overrides": " ".join(hydra_cfg.overrides.task)})
+        except Exception:
+            # Hydra config not available or other issue - continue without sweep logging
+            pass
+
         # Train
         print("\nStarting training...")
         model = train(cfg)
@@ -209,8 +228,18 @@ def main(cfg: DictConfig) -> None:
         print(f"Mean evaluation reward: {mean_reward:.2f}")
         log_metrics({"eval_mean_reward": mean_reward})
 
-        # Save model
+        # Save evaluation results for sweep analysis
         output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
+        eval_results = {
+            "eval_mean_reward": float(mean_reward),
+            "total_timesteps": cfg.train.total_timesteps,
+            "learning_rate": cfg.train.learning_rate,
+            # Add any other params that might be swept? We'll leave it to the analysis function to read the config.
+        }
+        import json
+        (output_dir / "eval_results.json").write_text(json.dumps(eval_results, indent=2))
+
+        # Save model
         model_path = output_dir / "model.zip"
         model.save(str(model_path))
         print(f"Model saved to: {model_path}")

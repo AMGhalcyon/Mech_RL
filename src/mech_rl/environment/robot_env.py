@@ -34,7 +34,7 @@ class RobotEnv(gym.Env):
         target: Fixed (x,y) target. None = random target each reset.
     """
 
-    metadata: dict[str, Any] = {"render_modes": []}
+    metadata: dict[str, Any] = {"render_modes": ["rgb_array"]}
 
     def __init__(
         self,
@@ -43,8 +43,14 @@ class RobotEnv(gym.Env):
         reward_params: RewardParams,
         *,
         target: np.ndarray | None = None,
+        render_mode: str | None = None,
     ) -> None:
         super().__init__()
+        if render_mode is not None and render_mode not in self.metadata["render_modes"]:
+            raise ValueError(
+                f"Unknown render_mode {render_mode!r}; "
+                f"expected one of {self.metadata['render_modes']}"
+            )
 
         self.robot_params = robot_params
         self.sim_params = sim_params
@@ -90,6 +96,11 @@ class RobotEnv(gym.Env):
 
         # Random number generator (gymnasium-managed via seed()).
         self._rng = np.random.default_rng()
+
+        # Rendering state. render_mode set only when explicitly requested so the
+        # default training path pays no matplotlib import / figure cost.
+        self.render_mode: str | None = render_mode
+        self._renderer: _ArmRenderer | None = None
 
     # ------------------------------------------------------------------
     # gymnasium API
@@ -158,6 +169,23 @@ class RobotEnv(gym.Env):
         return self._obs_dict(), reward, terminated, truncated, info
 
     # ------------------------------------------------------------------
+    # Rendering (rgb_array only — matplotlib Agg backend, lazy-imported)
+    # ------------------------------------------------------------------
+
+    def render(self):
+        """Render the current arm state as an rgb_array frame.
+
+        Returns an (H, W, 3) uint8 numpy array, or None if render_mode is not
+        set. matplotlib is imported lazily so the training hot path pays no
+        figure/Agg cost when rendering is not requested.
+        """
+        if self.render_mode is None:
+            return None
+        if self._renderer is None:
+            self._renderer = _ArmRenderer(self.robot_params)
+        return self._renderer.draw(self._state.q, self._target, self._step_count)
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
@@ -220,6 +248,76 @@ class RobotEnv(gym.Env):
             xy = self._rng.uniform(-max_reach, max_reach, size=2)
             if np.linalg.norm(xy) <= max_reach:
                 return xy
+
+
+class _ArmRenderer:
+    """Lazy matplotlib Agg renderer for the 2-DOF arm.
+
+    Holds one figure/axes pair across draws to avoid per-step re-creation.
+    A small fixed square view bounds the workspace regardless of arm pose.
+    """
+
+    def __init__(self, robot_params: RobotParams, figsize: float = 3.0) -> None:
+        import matplotlib
+
+        matplotlib.use("Agg", force=True)
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Circle
+
+        self._plt = plt
+        self._Circle = Circle
+        self._params = robot_params
+
+        reach = robot_params.l1 + robot_params.l2
+        # Pad the view so the arm never sits flush against the edge.
+        self._lim = float(reach * 1.15)
+
+        self._fig = plt.figure(figsize=(figsize, figsize), dpi=100)
+        self._ax = self._fig.add_subplot(111)
+        self._ax.set_aspect("equal")
+        self._ax.set_xlim(-self._lim, self._lim)
+        self._ax.set_ylim(-self._lim, self._lim)
+        self._ax.set_facecolor("#f7f7f7")
+
+        # Reusable artists so each draw mutates in place instead of redrawing
+        # the whole canvas from scratch.
+        self._link_line, = self._ax.plot([], [], "-o", color="#2c3e50",
+                                         linewidth=4, markersize=6, zorder=3)
+        self._ee_dot, = self._ax.plot([], [], "o", color="#e74c3c",
+                                      markersize=8, zorder=4)
+        self._target_marker, = self._ax.plot([], [], "x", color="#27ae60",
+                                             markersize=12, markeredgewidth=3,
+                                             zorder=4)
+        # Tolerance circle — fixed visible radius (not tied to reward params here)
+        self._target_circle = Circle((0.0, 0.0), 0.05, fill=False,
+                                     linestyle="--", color="#27ae60", zorder=2)
+        self._ax.add_patch(self._target_circle)
+        self._step_text = self._ax.text(
+            0.02, 0.98, "", transform=self._ax.transAxes, va="top", fontsize=9
+        )
+        self._fig.subplots_adjust(left=0.04, right=0.96, bottom=0.04, top=0.96)
+
+    def draw(self, q: np.ndarray, target: np.ndarray, step: int) -> np.ndarray:
+        """Update artist data and return an (H, W, 3) uint8 frame."""
+        p0 = np.array([0.0, 0.0])
+        p1 = np.array([
+            self._params.l1 * np.cos(q[0]), self._params.l1 * np.sin(q[0])
+        ])
+        p2 = p1 + np.array([
+            self._params.l2 * np.cos(q[0] + q[1]),
+            self._params.l2 * np.sin(q[0] + q[1]),
+        ])
+
+        self._link_line.set_data([p0[0], p1[0], p2[0]], [p0[1], p1[1], p2[1]])
+        self._ee_dot.set_data([p2[0]], [p2[1]])
+        self._target_marker.set_data([target[0]], [target[1]])
+        self._target_circle.set_center((float(target[0]), float(target[1])))
+        self._step_text.set_text(f"step {step}")
+
+        self._fig.canvas.draw()
+        # buffer_rgba() — (H, W, 4) uint8 on the Agg backend.
+        arr = np.asarray(self._fig.canvas.buffer_rgba())
+        return arr[:, :, :3].copy()
 
 
 __all__ = ["RobotEnv"]

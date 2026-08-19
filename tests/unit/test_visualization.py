@@ -103,14 +103,18 @@ def test_visualization_module_imports():
 
 def test_record_gif_import_error():
     """Test that ImportError is raised when imageio is not available."""
+    from unittest.mock import Mock
+
+    import numpy as np
+
+    from mech_rl.domain.parameters import RobotParams
+    from mech_rl.environment import RobotEnv
+    from mech_rl.visualization import record_gif
+
     with patch.dict('sys.modules', {'imageio': None}):
         # Should not raise ImportError on import (optional dep), but should
         # return gif_path=None when imageio missing.
-        from mech_rl.visualization import record_gif
-        from unittest.mock import Mock
-        import numpy as np
-        from mech_rl.environment import RobotEnv
-        from mech_rl.domain.parameters import RobotParams
+        mock_env = Mock(spec=RobotEnv)
 
         mock_env = Mock(spec=RobotEnv)
         mock_env.robot_params = RobotParams(
@@ -132,12 +136,14 @@ def test_record_gif_import_error():
 
 
 def test_record_gif_basic():
-    """Test basic structure of record_gif output."""
-    from unittest.mock import Mock
+    """Test basic structure of record_gif output - mock visualize_learned_policy to avoid rendering."""
+    from unittest.mock import Mock, patch
+
     import numpy as np
+
+    from mech_rl.domain.parameters import RobotParams
     from mech_rl.environment import RobotEnv
     from mech_rl.visualization import record_gif
-    from mech_rl.domain.parameters import RobotParams
 
     mock_env = Mock(spec=RobotEnv)
     mock_env.robot_params = RobotParams(
@@ -151,7 +157,28 @@ def test_record_gif_basic():
     mock_model = Mock()
     mock_model.predict.return_value = (np.array([0.5, 0.5]), None)
 
-    result = record_gif(mock_model, mock_env, num_episodes=1, output_dir=None, fps=10)
+    # Mock visualize_learned_policy to return deterministic episode data without actual rendering
+    mock_episode_data = {
+        'episodes': [
+            {
+                'episode': 0,
+                'reward': 1.0,
+                'length': 2,
+                'actions': [np.array([0.5, 0.5]), np.array([0.5, 0.5])],
+                'success': False,
+                'states': [np.array([0.0, 0.0]), np.array([0.1, 0.1]), np.array([0.2, 0.2])],
+                'ee_positions': [np.array([0.5, 0.0]), np.array([0.55, 0.0]), np.array([0.6, 0.0])],
+                'target': np.array([0.6, 0.0]),
+                'rewards': [0.5, 0.5],
+            }
+        ],
+        'success_rate': 0.0,
+        'mean_reward': 1.0,
+        'mean_episode_length': 2.0,
+    }
+
+    with patch('mech_rl.visualization.visualize_learned_policy', return_value=mock_episode_data):
+        result = record_gif(mock_model, mock_env, num_episodes=1, output_dir=None, fps=10)
 
     assert 'episodes' in result
     assert 'frame_paths' in result
@@ -170,8 +197,10 @@ def test_record_gif_basic():
 
 def test_analyze_sweeps_no_runs():
     """Test that analyze_sweeps raises FileNotFoundError when no run directories exist."""
-    from mech_rl.visualization import analyze_sweeps
     import tempfile
+
+    from mech_rl.visualization import analyze_sweeps
+
     with tempfile.TemporaryDirectory() as tmpdir:
         # Empty directory
         with pytest.raises(FileNotFoundError, match="No eval_results.json files found"):
@@ -180,10 +209,11 @@ def test_analyze_sweeps_no_runs():
 
 def test_analyze_sweeps_basic():
     """Test basic structure of analyze_sweeps output."""
-    from mech_rl.visualization import analyze_sweeps
-    import tempfile
     import json
-    import os
+    import tempfile
+    from pathlib import Path
+
+    from mech_rl.visualization import analyze_sweeps
 
     with tempfile.TemporaryDirectory() as tmpdir:
         output_root = Path(tmpdir)
@@ -226,9 +256,10 @@ def test_analyze_sweeps_basic():
 
 def test_create_training_report_import_error():
     """Test that ImportError is raised when tensorboard is not available."""
-    with patch.dict('sys.modules', {'tensorboard': None}):
+    # Patch the specific module that gets imported
+    with patch.dict('sys.modules', {'tensorboard.backend.event_processing.event_accumulator': None}):
         with pytest.raises(ImportError, match="tensorboard not installed"):
-            create_training_report("/fake/logdir", "/fake/output")
+            create_training_report("/fake/logdir")
 
 
 if __name__ == "__main__":

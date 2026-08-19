@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 import hydra
 from hydra.core.config_store import ConfigStore
 from omegaconf import DictConfig
+from stable_baselines3.common.callbacks import BaseCallback, CallbackList, CheckpointCallback
 
 from mech_rl.configs.main_config import MechRLConfig
 from mech_rl.configs.reward import RewardConfig
@@ -109,9 +110,6 @@ def make_env(cfg: DictConfig, seed: int | None = None) -> RobotEnv:
 def train(cfg: DictConfig) -> PPO:
     """Train a PPO policy on the robotic arm environment.
 
-    This is the skeleton for Day 5+. Currently a placeholder that
-    instantiates the environment and returns a policy placeholder.
-
     Args:
         cfg: Hydra config with all training parameters.
 
@@ -152,20 +150,99 @@ def train(cfg: DictConfig) -> PPO:
         tensorboard_log=tensorboard_log,
     )
 
-    # Train with checkpoint callback
-    from stable_baselines3.common.callbacks import CheckpointCallback
+    # Callbacks
+    callbacks = []
+
+    # Checkpoint callback
     checkpoint_cb = CheckpointCallback(
         save_freq=max(1000, cfg.train.total_timesteps // 10),
         save_path=str(output_dir / "checkpoints"),
         name_prefix="rl_model",
         verbose=1,
     )
+    callbacks.append(checkpoint_cb)
+
+    # Evaluation during training callback
+    eval_interval = getattr(cfg.train, "eval_interval", 10000)
+    if eval_interval and eval_interval > 0:
+        eval_env = instantiate_env(cfg)
+        eval_callback = EvalDuringTrainingCallback(
+            eval_env=eval_env,
+            eval_freq=eval_interval,
+            n_eval_episodes=getattr(cfg.train, "eval_episodes", 3),
+            log_path=str(output_dir / "eval_logs"),
+            verbose=1,
+        )
+        callbacks.append(eval_callback)
+
+    # Train with callbacks
+    callback = CallbackList(callbacks) if len(callbacks) > 1 else callbacks[0]
     model.learn(
         total_timesteps=cfg.train.total_timesteps,
-        callback=checkpoint_cb,
+        callback=callback,
     )
 
     return model
+
+
+class EvalDuringTrainingCallback(BaseCallback):
+    """Callback to evaluate the model during training and log to TensorBoard."""
+
+    def __init__(
+        self,
+        eval_env: RobotEnv,
+        eval_freq: int,
+        n_eval_episodes: int = 3,
+        log_path: str | None = None,
+        verbose: int = 1,
+    ):
+        super().__init__(verbose)
+        self.eval_env = eval_env
+        self.eval_freq = eval_freq
+        self.n_eval_episodes = n_eval_episodes
+        self.log_path = log_path
+        self.last_eval_step = 0
+        self.eval_count = 0
+
+        if log_path:
+            Path(log_path).mkdir(parents=True, exist_ok=True)
+
+    def _on_step(self) -> bool:
+        """Called at each step of training."""
+        current_step = self.num_timesteps
+        if current_step - self.last_eval_step >= self.eval_freq:
+            self.last_eval_step = current_step
+            self.eval_count += 1
+            self._evaluate(current_step)
+        return True
+
+    def _evaluate(self, step: int) -> None:
+        """Run evaluation episodes and log results."""
+        from mech_rl.evaluation.eval_loop import evaluate
+
+        mean_reward = evaluate(self.model, self.eval_env, self.n_eval_episodes)
+
+        if self.verbose >= 1:
+            print(f"[Eval {self.eval_count}] Step {step}: mean_reward = {mean_reward:.2f}")
+
+        # Log to TensorBoard if available
+        try:
+            if hasattr(self.model, "logger") and self.model.logger is not None:
+                self.model.logger.record("eval/mean_reward", mean_reward)
+                self.model.logger.dump(step=step)
+        except Exception:
+            pass
+
+        # Log to file
+        if self.log_path:
+            import json
+            eval_log = {
+                "step": step,
+                "mean_reward": float(mean_reward),
+                "n_episodes": self.n_eval_episodes,
+            }
+            log_file = Path(self.log_path) / f"eval_{self.eval_count:04d}.json"
+            log_file.write_text(json.dumps(eval_log, indent=2))
 
 
 # Hydra entry point decorator
@@ -234,7 +311,21 @@ def main(cfg: DictConfig) -> None:
             "eval_mean_reward": float(mean_reward),
             "total_timesteps": cfg.train.total_timesteps,
             "learning_rate": cfg.train.learning_rate,
-            # Add any other params that might be swept? We'll leave it to the analysis function to read the config.
+            "distance_coef": cfg.reward.distance_coef,
+            "effort_coef": cfg.reward.effort_coef,
+            "smoothness_coef": cfg.reward.smoothness_coef,
+            "success_bonus": cfg.reward.success_bonus,
+            "success_radius": cfg.reward.success_radius,
+            "time_penalty": cfg.reward.time_penalty,
+            "policy_net_arch": str(cfg.train.policy_kwargs.get("net_arch", [])),
+            "clip_range": cfg.train.clip_range,
+            "ent_coef": cfg.train.ent_coef,
+            "gae_lambda": cfg.train.gae_lambda,
+            "n_steps": cfg.train.n_steps,
+            "batch_size": cfg.train.batch_size,
+            "gamma": cfg.train.gamma,
+            "vf_coef": cfg.train.vf_coef,
+            "max_grad_norm": cfg.train.max_grad_norm,
         }
         import json
         (output_dir / "eval_results.json").write_text(json.dumps(eval_results, indent=2))

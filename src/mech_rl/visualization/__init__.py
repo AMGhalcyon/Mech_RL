@@ -307,7 +307,7 @@ def record_gif(model, env: RobotEnv, num_episodes: int = 3,
                 break
 
     # Save all frames as PNG (lossless, universal).
-    for i, (frame, path) in enumerate(zip(frames, frame_paths)):
+    for _i, (frame, path) in enumerate(zip(frames, frame_paths, strict=True)):
         # matplotlib can save uint8 RGB arrays via imwrite.
         plt.imsave(path, frame)
 
@@ -378,7 +378,7 @@ def analyze_sweeps(sweep_param: str = "learning_rate",
         run_dir = eval_file.parent
         try:
             import json
-            with open(eval_file, 'r') as f:
+            with open(eval_file) as f:
                 results = json.load(f)
 
             if sweep_param in results and "eval_mean_reward" in results:
@@ -416,7 +416,7 @@ def analyze_sweeps(sweep_param: str = "learning_rate",
     with open(csv_path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow([sweep_param, "eval_mean_reward"])
-        for val, reward in zip(sweep_vals, rewards):
+        for val, reward in zip(sweep_vals, rewards, strict=True):
             writer.writerow([val, reward])
 
     # Create comparison plot
@@ -428,7 +428,7 @@ def analyze_sweeps(sweep_param: str = "learning_rate",
     plt.grid(True, alpha=0.3)
 
     # Annotate points with run directory names (just the last part for brevity)
-    for i, (x, y, run_dir) in enumerate(zip(sweep_vals, rewards, run_paths)):
+    for _i, (x, y, run_dir) in enumerate(zip(sweep_vals, rewards, run_paths, strict=True)):
         plt.annotate(run_dir.name, (x, y), xytext=(5, 5),
                     textcoords='offset points', fontsize=8, alpha=0.7)
 

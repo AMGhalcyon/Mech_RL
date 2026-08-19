@@ -59,6 +59,11 @@ class TrainConfig:
     # Device: "auto", "cpu", "cuda"
     device: str = "auto"
 
+    # Evaluation during training (optional)
+    eval_interval: int = 10000
+    # Number of episodes for evaluation during training
+    eval_episodes: int = 3
+
     def __post_init__(self) -> None:
         """Set default policy_kwargs if not provided."""
         if self.policy_kwargs is None:

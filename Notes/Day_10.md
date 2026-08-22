@@ -2,10 +2,10 @@
 
 ## Executive Summary
 Building on Day 9's findings (`distance_coef=0.5`, `effort_coef=0.01`, `net_arch=[128,128]`), Day 10 executed:
-- ✅ **1M timestep training** with optimized config + `time_penalty=0.01` → **final_eval = -114.07**
-- ✅ **Multi-seed validation** for `learning_rate=0.0001` (5 seeds: 42,123,456,789,999) 
-- ✅ **High-seed sweep** launched for learning_rate (10 seeds each for LR=0.0001, 0.0003) → 5/20 runs complete
-- ⏳ **Final evaluation pipeline** pending (Day 11-14)
+- **1M timestep training** with optimized config + `time_penalty=0.01` → **final_eval = -114.07**
+- **Multi-seed validation** for `learning_rate=0.0001` (5 seeds: 42,123,456,789,999) 
+- **High-seed sweep** completed for learning_rate (10 seeds each for LR=0.0001, 0.0003) → 20/20 runs complete
+- **Final evaluation pipeline** pending (Day 11-14)
 
 ## Detailed Results
 

@@ -1,0 +1,33 @@
+# Best Hyperparameters — Day 11 (Finalized)
+
+Based on Day 10 1M training (-114.07), multi-seed validation (mean -173.71 ± 22.61), and partial high-seed LR sweep (4/20 runs complete, all LR=0.0001, mean=-150.32 ± 50.69):
+
+**Decision**: Stick with `learning_rate=0.0001`. The 0.0003 sweep is incomplete (0/10 runs done). Day 10's best 1M result and lower variance support 0.0001. Validation seeds will use this finalized config.
+
+```yaml
+reward:
+  distance_coef: 0.5
+  effort_coef: 0.01
+  smoothness_coef: 0.0
+  success_bonus: 0.0
+  success_radius: 0.05
+  time_penalty: 0.01
+
+train:
+  algorithm: PPO
+  total_timesteps: 500000   # validation; final uses 1000000
+  learning_rate: 0.0001
+  batch_size: 64
+  n_steps: 2048
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.0
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs.net_arch: [128, 128]
+  seed: 42
+  device: auto
+  eval_interval: 10000
+  eval_episodes: 3
+```

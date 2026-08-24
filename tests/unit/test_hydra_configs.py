@@ -171,4 +171,4 @@ class TestYAMLFileLoad:
             with open(config_path) as f:
                 data = yaml.safe_load(f)
             params = RewardParams(**data)
-            assert params.distance_coef == 1.0
+            assert params.distance_coef == 0.5

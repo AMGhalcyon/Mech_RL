@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mech_rl"
-version = "0.1.0"
+version = "1.0.0"
 description = "Energy-aware reinforcement learning for 2-DOF robotic arm control"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -21,10 +21,10 @@ class TrainConfig:
     algorithm: str = "PPO"
 
     # Total training timesteps
-    total_timesteps: int = 100_000
+    total_timesteps: int = 1_000_000
 
     # Learning rate
-    learning_rate: float = 0.0003
+    learning_rate: float = 0.0001
 
     # Batch size
     batch_size: int = 64
@@ -36,13 +36,13 @@ class TrainConfig:
     gamma: float = 0.99
 
     # GAE (Generalized Advantage Estimation) lambda
-    gae_lambda: float = 0.95
+    gae_lambda: float = 0.9
 
     # PPO clip range
-    clip_range: float = 0.2
+    clip_range: float = 0.1
 
     # Entropy coefficient for the loss calculation
-    ent_coef: float = 0.0
+    ent_coef: float = 0.01
 
     # Value function coefficient for the loss calculation
     vf_coef: float = 0.5
@@ -67,7 +67,7 @@ class TrainConfig:
     def __post_init__(self) -> None:
         """Set default policy_kwargs if not provided."""
         if self.policy_kwargs is None:
-            object.__setattr__(self, "policy_kwargs", dict(net_arch=[64, 64]))
+            object.__setattr__(self, "policy_kwargs", dict(net_arch=[128, 128]))
 
 
 __all__ = ["TrainConfig"]

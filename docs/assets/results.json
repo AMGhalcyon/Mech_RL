@@ -1,0 +1,29 @@
+{
+  "model_run": "80b180b06ff64b519e0b1308cf82eae2",
+  "episodes": 20,
+  "seeds": [
+    0,
+    19
+  ],
+  "trained_policy": {
+    "success_rate": 0.9,
+    "mean_reward": -89.50927167493447,
+    "mean_episode_length": 315.05
+  },
+  "random_policy": {
+    "success_rate": 0.6,
+    "mean_reward": -261.87004805769106,
+    "mean_episode_length": 550.95
+  },
+  "sweep_welch_p": {
+    "Learning rate": 0.234,
+    "Clip range": 0.647,
+    "Entropy coefficient": 0.64,
+    "GAE lambda": 0.154
+  },
+  "gif_seeds": [
+    1,
+    2,
+    3
+  ]
+}

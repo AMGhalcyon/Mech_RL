@@ -54,10 +54,6 @@ multirun/
 .env
 AGENTS.md
 
-# Local-only: README figure generator and its output
-/scripts/
-/docs/
-
 # Graphify (local knowledge graph artifacts — regenerate with `graphify extract .`)
 graphify-out/
 

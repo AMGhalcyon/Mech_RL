@@ -18,8 +18,9 @@ htmlcov/
 .coverage
 coverage.xml
 
-# Linting
+# Linting / type checking
 .ruff_cache/
+.mypy_cache/
 
 # IDE
 .vscode/
@@ -37,6 +38,9 @@ experiments/
 models/
 results/
 .mlflow/
+mlruns/
+mlartifacts/
+*.tfevents.*
 *.pt
 *.pth
 *.onnx
@@ -50,6 +54,10 @@ multirun/
 .env
 AGENTS.md
 
+# Local-only: README figure generator and its output
+/scripts/
+/docs/
+
 # Graphify (local knowledge graph artifacts — regenerate with `graphify extract .`)
 graphify-out/
 
@@ -58,4 +66,3 @@ graphify-out/
 
 # Graphify merge-driver registration (project-private; the .git/hooks scripts are per-clone and not committed anyway)
 .gitattributes
-mlruns/
